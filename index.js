@@ -1,8 +1,10 @@
+require('dotenv').config()
 const { google } = require('googleapis')
 const mysql = require('mysql2/promise')
-const credentials = require('./credentials.json')
+const credentials = process.env.NODE_ENV === 'development' 
+  ? require('./credentials-dev.json') 
+  : require('./credentials.json');
 const path = require('path')
-require('dotenv').config()
 
 async function authenticate() {
 	const auth = new google.auth.GoogleAuth({
