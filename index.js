@@ -124,8 +124,9 @@ async function processJsonData(jsonData, fileName) {
 
 		if (rows.length > 0) {
 			const currentType = rows[0].type
+			const currentStatus = rows[0].status
 
-			if (currentType === 'WHITELISTED') {
+			if (currentStatus === 'WHITELISTED') {
 				console.log(`User ${id} is whitelisted, skipping.`)
 				continue
 			}
@@ -186,7 +187,6 @@ async function processJsonData(jsonData, fileName) {
 	}
 
 	await sendDiscordWebhookMessage(`Imported ${added} new users and updated ${updated} users for ${serverId}.`)
-
 	await connection.end()
 }
 
