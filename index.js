@@ -17,17 +17,22 @@ async function authenticate() {
 	return auth.getClient()
 }
 
-async function sendDiscordWebhookMessage(message) {
+async function sendDiscordWebhookMessage(description, color = 0x00ff00) {
 	try {
 		const response = await axios.post(webhookUrl, {
-			content: message,
+			embeds: [
+				{
+					title: 'Import',
+					description: description,
+					color: color,
+				},
+			],
 		})
 		console.log('Message sent successfully:', response.data)
 	} catch (error) {
 		console.error('Error sending message:', error)
 	}
 }
-
 async function listAndReadJsonFiles(auth) {
 	const drive = google.drive({ version: 'v3', auth })
 	let pageToken = null
@@ -47,8 +52,12 @@ async function listAndReadJsonFiles(auth) {
 					await readFileContent(drive, file.id, file.name)
 					await deleteFile(drive, file.id)
 				}
+				await sendDiscordWebhookMessage(
+					`All **${files.length}** file(s) have been processed.`
+				)
 			} else {
 				console.log('No files found.')
+				await sendDiscordWebhookMessage(`No files found to import.`, 0xff0000)
 			}
 			pageToken = res.data.nextPageToken
 		} catch (error) {
@@ -97,14 +106,15 @@ async function processJsonData(jsonData, fileName) {
 	if (serverRows.length === 0) {
 		console.error(`Server ID ${serverId} does not exist in the BadServers table.`)
 		await sendDiscordWebhookMessage(
-			`Server ID ${serverId} does not exist in the BadServers table.`
+			`Server ID **${serverId}** wasn't found in the bad servers list.`,
+			0xff0000
 		)
 		await connection.end()
 		return
 	}
 
 	await sendDiscordWebhookMessage(
-		`Importing ${jsonData.length} users for ${serverId}...`
+		`Importing **${jsonData.length}** users for **${serverId}**...`
 	)
 	let added = 0
 	let updated = 0
@@ -191,7 +201,7 @@ async function processJsonData(jsonData, fileName) {
 	}
 
 	await sendDiscordWebhookMessage(
-		`Imported ${added} new users and updated ${updated} users for ${serverId}.`
+		`Imported **${added}** new users and updated **${updated}** users for **${serverId}**.`
 	)
 	await connection.end()
 }
