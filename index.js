@@ -1,9 +1,10 @@
 require('dotenv').config()
 const { google } = require('googleapis')
 const mysql = require('mysql2/promise')
-const credentials = process.env.NODE_ENV === 'development' 
-  ? require('./credentials-dev.json') 
-  : require('./credentials.json');
+const credentials =
+	process.env.NODE_ENV === 'development'
+		? require('./credentials-dev.json')
+		: require('./credentials.json')
 const path = require('path')
 
 async function authenticate() {
@@ -105,6 +106,12 @@ async function processJsonData(jsonData, fileName) {
 
 		if (rows.length > 0) {
 			const currentType = rows[0].type
+
+			if (currentType === 'WHITELISTED') {
+				console.log(`User ${id} is whitelisted, skipping.`)
+				continue
+			}
+
 			const currentTypeIndex = typeHierarchy.indexOf(currentType)
 			const newTypeIndex = typeHierarchy.indexOf(type)
 
