@@ -1,4 +1,5 @@
 require('dotenv').config()
+const axios = require('axios');
 const { google } = require('googleapis')
 const mysql = require('mysql2/promise')
 const credentials =
@@ -6,6 +7,7 @@ const credentials =
 		? require('./credentials-dev.json')
 		: require('./credentials.json')
 const path = require('path')
+const webhookUrl = process.env.WEBHOOK_URL
 
 async function authenticate() {
 	const auth = new google.auth.GoogleAuth({
@@ -13,6 +15,17 @@ async function authenticate() {
 		scopes: ['https://www.googleapis.com/auth/drive'],
 	})
 	return auth.getClient()
+}
+
+async function sendDiscordWebhookMessage(message) {
+  try {
+    const response = await axios.post(webhookUrl, {
+      content: message,
+    });
+    console.log('Message sent successfully:', response.data);
+  } catch (error) {
+    console.error('Error sending message:', error);
+  }
 }
 
 async function listAndReadJsonFiles(auth) {
@@ -83,9 +96,14 @@ async function processJsonData(jsonData, fileName) {
 
 	if (serverRows.length === 0) {
 		console.error(`Server ID ${serverId} does not exist in the BadServers table.`)
+		await sendDiscordWebhookMessage(`Server ID ${serverId} does not exist in the BadServers table.`)
 		await connection.end()
 		return
 	}
+
+	await sendDiscordWebhookMessage(`Importing ${jsonData.length} users for ${serverId}...`)
+	let added = 0
+	let updated = 0
 
 	for (const entry of jsonData) {
 		const { id, type, roles = [] } = entry
@@ -150,19 +168,24 @@ async function processJsonData(jsonData, fileName) {
 					'UPDATE Imports SET type = ?, updatedAt = NOW(), appealed = 0 WHERE id = ? AND server = ?',
 					[type, id, serverId]
 				)
+				updated = updated + 1
 			} else {
 				await connection.execute(
 					'UPDATE Imports SET appealed = 0, updatedAt = NOW() WHERE id = ? AND server = ?',
 					[id, serverId]
 				)
+				updated = updated + 1
 			}
 		} else {
 			await connection.execute(
 				'INSERT INTO Imports (id, server, roles, type, appealed, createdAt, updatedAt, reason) VALUES (?, ?, ?, ?, ?, NOW(), NOW(), ?)',
 				[id, serverId, rolesString, type, 0, '']
 			)
+			added = added + 1
 		}
 	}
+
+	await sendDiscordWebhookMessage(`Imported ${added} new users and updated ${updated} users for ${serverId}.`)
 
 	await connection.end()
 }
