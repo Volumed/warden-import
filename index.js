@@ -1,5 +1,5 @@
 require('dotenv').config()
-const axios = require('axios');
+const axios = require('axios')
 const { google } = require('googleapis')
 const mysql = require('mysql2/promise')
 const credentials =
@@ -18,14 +18,14 @@ async function authenticate() {
 }
 
 async function sendDiscordWebhookMessage(message) {
-  try {
-    const response = await axios.post(webhookUrl, {
-      content: message,
-    });
-    console.log('Message sent successfully:', response.data);
-  } catch (error) {
-    console.error('Error sending message:', error);
-  }
+	try {
+		const response = await axios.post(webhookUrl, {
+			content: message,
+		})
+		console.log('Message sent successfully:', response.data)
+	} catch (error) {
+		console.error('Error sending message:', error)
+	}
 }
 
 async function listAndReadJsonFiles(auth) {
@@ -96,12 +96,16 @@ async function processJsonData(jsonData, fileName) {
 
 	if (serverRows.length === 0) {
 		console.error(`Server ID ${serverId} does not exist in the BadServers table.`)
-		await sendDiscordWebhookMessage(`Server ID ${serverId} does not exist in the BadServers table.`)
+		await sendDiscordWebhookMessage(
+			`Server ID ${serverId} does not exist in the BadServers table.`
+		)
 		await connection.end()
 		return
 	}
 
-	await sendDiscordWebhookMessage(`Importing ${jsonData.length} users for ${serverId}...`)
+	await sendDiscordWebhookMessage(
+		`Importing ${jsonData.length} users for ${serverId}...`
+	)
 	let added = 0
 	let updated = 0
 
@@ -166,14 +170,14 @@ async function processJsonData(jsonData, fileName) {
 
 			if (newTypeIndex > currentTypeIndex) {
 				await connection.execute(
-					'UPDATE Imports SET type = ?, updatedAt = NOW(), appealed = 0 WHERE id = ? AND server = ?',
-					[type, id, serverId]
+					'UPDATE Imports SET type = ?, roles = ?, updatedAt = NOW(), appealed = 0 WHERE id = ? AND server = ?',
+					[type, rolesString, id, serverId]
 				)
 				updated = updated + 1
 			} else {
 				await connection.execute(
-					'UPDATE Imports SET appealed = 0, updatedAt = NOW() WHERE id = ? AND server = ?',
-					[id, serverId]
+					'UPDATE Imports SET roles = ?, appealed = 0, updatedAt = NOW() WHERE id = ? AND server = ?',
+					[rolesString, id, serverId]
 				)
 				updated = updated + 1
 			}
@@ -186,7 +190,9 @@ async function processJsonData(jsonData, fileName) {
 		}
 	}
 
-	await sendDiscordWebhookMessage(`Imported ${added} new users and updated ${updated} users for ${serverId}.`)
+	await sendDiscordWebhookMessage(
+		`Imported ${added} new users and updated ${updated} users for ${serverId}.`
+	)
 	await connection.end()
 }
 
