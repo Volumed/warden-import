@@ -33,6 +33,7 @@ async function sendDiscordWebhookMessage(description, color = 0x00ff00) {
 		console.error('Error sending message:', error)
 	}
 }
+
 async function listAndReadJsonFiles(auth) {
 	const drive = google.drive({ version: 'v3', auth })
 	let pageToken = null
