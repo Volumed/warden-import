@@ -163,7 +163,7 @@ async function processJsonData(jsonData, fileName) {
 		} else {
 			await connection.execute(
 				'INSERT INTO Users (id, last_username, avatar, type, status) VALUES (?, ?, ?, ?, ?)',
-				[id, 'EMPTY', 'EMPTY', type, status]
+				[id, 'EMPTY', 'https://cdn.discordapp.com/embed/avatars/0.png', type, status]
 			)
 		}
 
