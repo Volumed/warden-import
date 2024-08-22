@@ -9,6 +9,13 @@ const credentials =
 const path = require('path')
 const webhookUrl = process.env.WEBHOOK_URL
 
+let totalUsers = [];
+totalUsers['new'] = 0;
+totalUsers['updated'] = 0;
+let unknowServers = ''
+let startTime = performance.now()
+
+
 async function authenticate() {
 	const auth = new google.auth.GoogleAuth({
 		credentials,
@@ -17,6 +24,12 @@ async function authenticate() {
 	return auth.getClient()
 }
 
+
+function millisToMinutesAndSeconds(millis) {
+	var minutes = Math.floor(millis / 60000);
+	var seconds = ((millis % 60000) / 1000).toFixed(0);
+	return minutes + ":" + (seconds < 10 ? '0' : '') + seconds;
+  }
 async function sendDiscordWebhookMessage(description, color = 0x00ff00) {
 	try {
 		const response = await axios.post(webhookUrl, {
@@ -53,8 +66,9 @@ async function listAndReadJsonFiles(auth) {
 					await readFileContent(drive, file.id, file.name)
 					await deleteFile(drive, file.id)
 				}
+				let endTime = performance.now()
 				await sendDiscordWebhookMessage(
-					`All **${files.length}** file(s) have been processed.`
+					`All **${files.length}** file(s) have been processed. Total New users:**${totalUsers['new']}** / Total updated users:**${totalUsers['updated']}**  / Total Time taken: **${millisToMinutesAndSeconds(endTime - startTime)}** / Servers not found: ${unknowServers}`
 				)
 			} else {
 				console.log('No files found.')
@@ -106,6 +120,7 @@ async function processJsonData(jsonData, fileName) {
 
 	if (serverRows.length === 0) {
 		console.error(`Server ID ${serverId} does not exist in the BadServers table.`)
+		unknowServers += ` / ${serverId}`;
 		await sendDiscordWebhookMessage(
 			`Server ID **${serverId}** wasn't found in the bad servers list.`,
 			0xff0000
@@ -200,7 +215,8 @@ async function processJsonData(jsonData, fileName) {
 			added = added + 1
 		}
 	}
-
+	totalUsers['new'] += added;
+	totalUsers['updated'] += updated;
 	await sendDiscordWebhookMessage(
 		`Imported **${added}** new users and updated **${updated}** users for **${serverId}**.`
 	)
