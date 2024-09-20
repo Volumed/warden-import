@@ -7,7 +7,7 @@ const amqp = require('amqplib/callback_api')
 const username = process.env.RABBITMQ_USER
 const password = process.env.RABBITMQ_PASS
 const host = process.env.RABBITMQ_HOST
-const connectionString = `amqps://${username}:${password}@${host}`
+const connectionString = `amqp://${username}:${password}@${host}`
 
 const webhookUrl = process.env.WEBHOOK_URL
 
