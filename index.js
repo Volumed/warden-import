@@ -14,10 +14,10 @@ const webhookUrl = process.env.WEBHOOK_URL
 let connection = false
 let serverDoesntExist = false
 let totalUsers = { new: 0, updated: 0 }
+let totalUsersChat = { new: 0, updated: 0 }
 
 let _guildId
 let oldGuildId
-let inactivityTimer = null
 let scanDoneTimer = null
 let wasDone = false
 
@@ -82,9 +82,9 @@ const guildIdHandler = {
 				await sendDiscordWebhookMessage(
 					`Import done for **${oldGuildId}**\n New users: **${totalUsers['new']}**\n Updated users: **${totalUsers['updated']}**`
 				)
-	
+
 				console.log('Guild done, resetting')
-	
+
 				serverDoesntExist = false
 				totalUsers = { new: 0, updated: 0 }
 			}
@@ -94,7 +94,7 @@ const guildIdHandler = {
 
 Object.defineProperty(global, 'guildId', guildIdHandler)
 
-const processUser = async (serverId, user) => {
+const processUserScraper = async (serverId, user) => {
 	const typeHierarchy = ['OTHER', 'LEAKER', 'CHEATER', 'SUPPORTER', 'OWNER']
 
 	let added = 0
@@ -201,22 +201,136 @@ const processUser = async (serverId, user) => {
 	totalUsers['updated'] += updated
 }
 
-const resetInactivityTimer = () => {
-	if (inactivityTimer) {
-		clearTimeout(inactivityTimer)
-	}
-	inactivityTimer = setTimeout(async () => {
-		if (connection) {
-			await connection.end()
-
-			connection = false
-			serverDoesntExist = false
-			totalUsers = { new: 0, updated: 0 }
-
-			console.log('Database connection closed due to inactivity')
+function convertServersTypeToUsersType(BadServersType) {
+	return BadServersType.map((type) => {
+		if (type === 'CHEATING') {
+			return 'CHEATER'
+		} else if (
+			type === 'RESELLING' ||
+			type === 'ADVERTISING' ||
+			type === 'OTHER'
+		) {
+			return 'OTHER'
+		} else if (type === 'LEAKING') {
+			return 'LEAKER'
 		}
-	}, 5 * 60 * 1000)
+		return type
+	})
 }
+
+const processUserChat = async (serverId, user) => {
+	const typeHierarchy = ['OTHER', 'LEAKER', 'CHEATER', 'SUPPORTER', 'OWNER']
+
+	let added = 0
+	let updated = 0
+
+	const [serverRows] = await connection.execute(
+		'SELECT id, type FROM BadServers WHERE id = ?',
+		[serverId]
+	)
+
+	if (serverRows.length === 0) {
+		console.error(`${serverId} doesn't exist in the database`)
+		return
+	}
+
+	user.type = convertServersTypeToUsersType([serverRows[0].type])[0]
+
+	const { id, type, roles = [] } = user
+
+	if (!id || !type) {
+		return
+	}
+
+	const [rows] = await connection.execute(
+		'SELECT id, type, status FROM Users WHERE id = ?',
+		[id]
+	)
+
+	let status = 'BLACKLISTED'
+	if (type === 'SUPPORTER' || type === 'OWNER') {
+		status = 'PERM_BLACKLISTED'
+	}
+
+	if (rows.length > 0) {
+		const currentType = rows[0].type
+		const currentStatus = rows[0].status
+
+		if (currentStatus === 'WHITELISTED') {
+			console.log(`User ${id} is whitelisted, skipping.`)
+			return
+		}
+
+		if (currentStatus === 'PERM_BLACKLISTED') {
+			status = 'PERM_BLACKLISTED'
+		}
+
+		const currentTypeIndex = typeHierarchy.indexOf(currentType)
+		const newTypeIndex = typeHierarchy.indexOf(type)
+
+		if (newTypeIndex > currentTypeIndex) {
+			await connection.execute(
+				'UPDATE Users SET type = ?, status = ? WHERE id = ?',
+				[type, status, id]
+			)
+		} else {
+			await connection.execute('UPDATE Users SET status = ? WHERE id = ?', [
+				status,
+				id,
+			])
+		}
+	} else {
+		await connection.execute(
+			'INSERT INTO Users (id, last_username, avatar, type, status) VALUES (?, ?, ?, ?, ?)',
+			[id, 'EMPTY', 'https://cdn.discordapp.com/embed/avatars/0.png', type, status]
+		)
+	}
+
+	const rolesString = roles.length > 0 ? roles.join(', ') : ''
+
+	const [importRows] = await connection.execute(
+		'SELECT id, type FROM Imports WHERE id = ? AND server = ?',
+		[id, serverId]
+	)
+
+	if (importRows.length > 0) {
+		const currentType = importRows[0].type
+		const currentTypeIndex = typeHierarchy.indexOf(currentType)
+		const newTypeIndex = typeHierarchy.indexOf(type)
+
+		if (newTypeIndex > currentTypeIndex) {
+			await connection.execute(
+				'UPDATE Imports SET type = ?, roles = ?, updatedAt = NOW(), appealed = 0 WHERE id = ? AND server = ?',
+				[type, rolesString, id, serverId]
+			)
+			updated = updated + 1
+		} else {
+			await connection.execute(
+				'UPDATE Imports SET roles = ?, appealed = 0, updatedAt = NOW() WHERE id = ? AND server = ?',
+				[rolesString, id, serverId]
+			)
+			updated = updated + 1
+		}
+	} else {
+		await connection.execute(
+			'INSERT INTO Imports (id, server, roles, type, appealed, createdAt, updatedAt, reason) VALUES (?, ?, ?, ?, ?, NOW(), NOW(), ?)',
+			[id, serverId, rolesString, type, 0, '']
+		)
+		added = added + 1
+	}
+
+	totalUsersChat['new'] += added
+	totalUsersChat['updated'] += updated
+}
+
+const sendTotalUsersChatEmbed = async () => {
+	if (totalUsersChat.new > 0 || totalUsersChat.updated > 0)
+		await sendDiscordWebhookMessage(
+			`Total Users added from chat log: **${totalUsersChat['new']}**\n Total Users updated from chat log: **${totalUsersChat['updated']}**`
+		)
+	totalUsersChat = { new: 0, updated: 0 }
+}
+setInterval(sendTotalUsersChatEmbed, 10 * 60 * 1000)
 
 amqp.connect(connectionString, (error0, connection) => {
 	if (error0) {
@@ -227,26 +341,46 @@ amqp.connect(connectionString, (error0, connection) => {
 			throw error1
 		}
 
-		var queue = 'users'
+		const queueScraper = 'users'
+		const queueChat = 'userschat'
 
-		channel.assertQueue(queue, {
+		channel.assertQueue(queueScraper, {
 			durable: false,
 		})
 
-		console.log('Waiting for guild and users')
+		channel.assertQueue(queueChat, {
+			durable: false,
+		})
+
+		console.log('Waiting for users')
 		await sendDiscordWebhookMessage(`Ready to import users`)
+		
+		connection = await getConnection().catch((err) => {
+			return console.error(err)
+		})
 
 		channel.consume(
-			queue,
+			queueScraper,
 			async (msg) => {
-				connection = await getConnection()
-				resetInactivityTimer()
-
 				const item = JSON.parse(msg.content)
 				guildId = item.guildId
-				if (item.id && !serverDoesntExist) await processUser(item.guildId, item)
+				if (item.id && !serverDoesntExist)
+					await processUserScraper(item.guildId, item)
 
-				console.log(item)
+				console.log('Scraper', item)
+			},
+			{
+				noAck: true,
+			}
+		)
+
+		channel.consume(
+			queueChat,
+			async (msg) => {
+				const item = JSON.parse(msg.content)
+				if (item.id) await processUserChat(item.guildId, item)
+
+				console.log('Chat', item)
 			},
 			{
 				noAck: true,
