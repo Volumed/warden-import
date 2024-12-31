@@ -21,6 +21,9 @@ let oldGuildId
 let scanDoneTimer = null
 let wasDone = false
 
+const messageQueueScraper = []
+const messageQueueChat = []
+
 const sendDiscordWebhookMessage = async (description, color = 0x00ff00) => {
 	try {
 		await axios.post(webhookUrl, {
@@ -332,6 +335,28 @@ const sendTotalUsersChatEmbed = async () => {
 }
 setInterval(sendTotalUsersChatEmbed, 10 * 60 * 1000)
 
+async function processQueueScraper() {
+	while (true) {
+		if (messageQueueScraper.length > 0) {
+			const task = messageQueueScraper.shift()
+			if (task) await task()
+		} else {
+			await new Promise((resolve) => setTimeout(resolve, 100))
+		}
+	}
+}
+
+async function processQueueChat() {
+	while (true) {
+		if (messageQueueChat.length > 0) {
+			const task = messageQueueChat.shift()
+			if (task) await task()
+		} else {
+			await new Promise((resolve) => setTimeout(resolve, 100))
+		}
+	}
+}
+
 amqp.connect(connectionString, (error0, connection) => {
 	if (error0) {
 		throw error0
@@ -342,19 +367,14 @@ amqp.connect(connectionString, (error0, connection) => {
 		}
 
 		const queueScraper = 'users'
-		const queueChat = 'userschat'
 
 		channel.assertQueue(queueScraper, {
 			durable: false,
 		})
 
-		channel.assertQueue(queueChat, {
-			durable: false,
-		})
+		console.log('Waiting for users from web')
+		await sendDiscordWebhookMessage(`Ready to import users from web`)
 
-		console.log('Waiting for users')
-		await sendDiscordWebhookMessage(`Ready to import users`)
-		
 		connection = await getConnection().catch((err) => {
 			return console.error(err)
 		})
@@ -364,27 +384,65 @@ amqp.connect(connectionString, (error0, connection) => {
 			async (msg) => {
 				const item = JSON.parse(msg.content)
 				guildId = item.guildId
-				if (item.id && !serverDoesntExist)
-					await processUserScraper(item.guildId, item)
-
-				console.log('Scraper', item)
+				messageQueueScraper.push(async () => {
+					try {
+						console.log('Scraper', item)
+						if (item.id && !serverDoesntExist)
+							await processUserScraper(item.guildId, item)
+						await new Promise((resolve) => setTimeout(resolve, 500))
+					} catch (error) {
+						console.error(error)
+					}
+				})
 			},
 			{
 				noAck: true,
 			}
 		)
+		await processQueueScraper().catch(console.error)
+	})
+})
+
+amqp.connect(connectionString, (error0, connection) => {
+	if (error0) {
+		throw error0
+	}
+	connection.createChannel(async (error1, channel) => {
+		if (error1) {
+			throw error1
+		}
+
+		const queueChat = 'usersChat'
+
+		channel.assertQueue(queueChat, {
+			durable: false,
+		})
+
+		console.log('Waiting for users from chat')
+		await sendDiscordWebhookMessage(`Ready to import users from chat`)
+
+		connection = await getConnection().catch((err) => {
+			return console.error(err)
+		})
 
 		channel.consume(
 			queueChat,
 			async (msg) => {
 				const item = JSON.parse(msg.content)
-				if (item.id) await processUserChat(item.guildId, item)
-
-				console.log('Chat', item)
+				messageQueueChat.push(async () => {
+					try {
+						console.log('Chat', item)
+						if (item.id) await processUserChat(item.guildId, item)
+						await new Promise((resolve) => setTimeout(resolve, 1000))
+					} catch (error) {
+						console.error(error)
+					}
+				})
 			},
 			{
 				noAck: true,
 			}
 		)
+		await processQueueChat().catch(console.error)
 	})
 })
