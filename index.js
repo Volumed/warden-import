@@ -433,7 +433,7 @@ amqp.connect(connectionString, (error0, connection) => {
 					try {
 						console.log('Chat', item)
 						if (item.id) await processUserChat(item.guildId, item)
-						await new Promise((resolve) => setTimeout(resolve, 1000))
+						await new Promise((resolve) => setTimeout(resolve, 500))
 					} catch (error) {
 						console.error(error)
 					}
