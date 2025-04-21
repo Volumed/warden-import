@@ -10,6 +10,7 @@ const host = process.env.RABBITMQ_HOST
 const connectionString = `amqp://${username}:${password}@${host}`
 
 const webhookUrl = process.env.WEBHOOK_URL
+const webhookUrlManagement = process.env.WEBHOOK_MANAGEMENT_URL
 
 let connection = false
 let serverDoesntExist = false
@@ -27,6 +28,21 @@ const messageQueueChat = []
 const sendDiscordWebhookMessage = async (description, color = 0x00ff00) => {
 	try {
 		await axios.post(webhookUrl, {
+			embeds: [
+				{
+					description: description,
+					color: color,
+				},
+			],
+		})
+	} catch (error) {
+		console.error('Error sending message:', error)
+	}
+}
+
+const sendDiscordWebhookManagementMessage = async (description, color = 0x00ff00) => {
+	try {
+		await axios.post(webhookUrlManagement, {
 			embeds: [
 				{
 					description: description,
@@ -138,6 +154,9 @@ const processUserScraper = async (serverId, user) => {
 		const currentStatus = rows[0].status
 
 		if (currentStatus === 'WHITELISTED') {
+			await sendDiscordWebhookManagementMessage(
+				`SCAN LOG: User <@${id}> was found in ${serverId}\n roles: ${roles}`
+			)
 			console.log(`User ${id} is whitelisted, skipping.`)
 			return
 		}
@@ -260,6 +279,9 @@ const processUserChat = async (serverId, user) => {
 		const currentStatus = rows[0].status
 
 		if (currentStatus === 'WHITELISTED') {
+			await sendDiscordWebhookManagementMessage(
+				`CHAT LOG: User <@${id}> was found in ${serverId}\n roles: ${roles}`
+			)
 			console.log(`User ${id} is whitelisted, skipping.`)
 			return
 		}
